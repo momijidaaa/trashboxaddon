@@ -1,0 +1,30 @@
+{
+  "format_version": 2,
+  "header": {
+    "name": "Trash Can Addon",
+    "description": "Trash Can UI Addon for Bedrock Edition",
+    "uuid": "eb963054-cc8f-45ad-b9c4-79c81adb6fa1",
+    "version": [1, 0, 0],
+    "min_engine_version": [1, 20, 80]
+  },
+  "modules": [
+    {
+      "description": "Scripting Module",
+      "type": "script",
+      "language": "javascript",
+      "uuid": "b8de3bec-2452-4d16-b301-d17d3d9e58e0",
+      "version": [1, 0, 0],
+      "entry": "scripts/main.js"
+    }
+  ],
+  "dependencies": [
+    {
+      "module_name": "@minecraft/server",
+      "version": "1.13.0"
+    },
+    {
+      "module_name": "@minecraft/server-ui",
+      "version": "1.3.0"
+    }
+  ]
+}
