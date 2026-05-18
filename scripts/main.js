@@ -86,7 +86,7 @@ function openInventoryTrashMenu(player) {
         }
     }
 
-    form.dropdown("破棄したいアイテムのスロットを選択してください:", itemNames, 0);
+    form.dropdown("破棄したいアイテムのスロットを選択してください:", itemNames, { defaultValue: 0 });
     form.toggle("§c本当に削除しますか？", false);
 
     form.show(player).then((response) => {
