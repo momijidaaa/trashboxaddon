@@ -16,9 +16,9 @@ system.beforeEvents.startup.subscribe(({ customCommandRegistry }) => {
             permissionLevel: CommandPermissionLevel.Any,
             cheatsRequired: false
         },
-        (event) => {
-            const player = event.origin.initiator;
-            if (!player || !(player instanceof Player)) {
+        (origin) => {
+            const player = origin.initiator;
+            if (!(player instanceof Player)) {
                 return { status: CustomCommandStatus.Failure };
             }
 
