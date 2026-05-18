@@ -22,10 +22,7 @@ system.beforeEvents.startup.subscribe(({ customCommandRegistry }) => {
                 return { status: CustomCommandStatus.Failure };
             }
 
-            system.run(() => {
-                openTrashChest(player);
-            });
-
+            openTrashChest(player);
             return { status: CustomCommandStatus.Success };
         }
     );
@@ -36,26 +33,15 @@ function openTrashChest(player) {
         const dim = player.dimension;
         const pos = {
             x: Math.floor(player.location.x),
-            y: Math.floor(player.location.y) + 3,
+            y: Math.floor(player.location.y) + 1,
             z: Math.floor(player.location.z)
         };
         
         dim.setBlockType(pos, "minecraft:chest");
-        const chestBlock = dim.getBlock(pos);
-        const chestContainer = chestBlock.getComponent("minecraft:inventory").container;
-        
-        const playerInv = player.getComponent("minecraft:inventory").container;
-        
-        for (let i = 0; i < playerInv.size; i++) {
-            const item = playerInv.getItem(i);
-            if (item) {
-                chestContainer.setItem(i, item.clone());
-            }
-        }
-        
-        player.openContainer(chestContainer);
         
         const originalState = new Map();
+        const playerInv = player.getComponent("minecraft:inventory").container;
+        
         for (let i = 0; i < playerInv.size; i++) {
             const item = playerInv.getItem(i);
             if (item) {
@@ -66,8 +52,19 @@ function openTrashChest(player) {
         trashData.set(player.id, {
             pos,
             dim,
-            originalState
+            originalState,
+            opened: Date.now()
         });
+        
+        player.runCommand(`setblock ${pos.x} ${pos.y} ${pos.z} chest`);
+        
+        system.runTimeout(() => {
+            try {
+                player.runCommand(`containeropen @s 0 ${pos.x} ${pos.y} ${pos.z}`);
+            } catch (e) {
+                player.sendMessage("§cチェストを開けませんでした");
+            }
+        }, 1);
         
         player.sendMessage("§a[ ゴミ箱 ] チェストが開きました");
         
@@ -76,7 +73,7 @@ function openTrashChest(player) {
                 checkDeletedItems(player);
                 system.clearRun(checkInterval);
             }
-        }, 1);
+        }, 2);
         
     } catch (err) {
         player.sendMessage("§cエラー: " + err);
