@@ -17,15 +17,8 @@ system.beforeEvents.startup.subscribe(({ customCommandRegistry }) => {
             cheatsRequired: false
         },
         (event) => {
-            let player = null;
-            
-            if (event.origin.initiator) {
-                player = event.origin.initiator;
-            } else if (event.origin.sourceEntity instanceof Player) {
-                player = event.origin.sourceEntity;
-            }
-            
-            if (!player) {
+            const player = event.origin.initiator;
+            if (!player || !(player instanceof Player)) {
                 return { status: CustomCommandStatus.Failure };
             }
 
