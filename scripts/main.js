@@ -1,4 +1,6 @@
 import {
+    CommandPermissionLevel,
+    CustomCommandStatus,
     Player,
     system,
     world,
@@ -11,14 +13,14 @@ system.beforeEvents.startup.subscribe(({ customCommandRegistry }) => {
         {
             name: "tr:trash",
             description: "ゴミ箱メニューを開きます",
-            permissionLevel: "Any",
+            permissionLevel: CommandPermissionLevel.Any,
             cheatsRequired: false,
         },
         (origin) => {
             const player = origin.initiator ?? origin.sourceEntity;
             if (!(player instanceof Player)) {
                 return {
-                    success: false,
+                    status: CustomCommandStatus.Failure,
                     message: "このコマンドはプレイヤーのみ使用できます。",
                 };
             }
@@ -27,7 +29,7 @@ system.beforeEvents.startup.subscribe(({ customCommandRegistry }) => {
                 openTrashMenu(player);
             });
 
-            return { success: true };
+            return { status: CustomCommandStatus.Success };
         }
     );
 });
