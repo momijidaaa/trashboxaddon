@@ -3,10 +3,7 @@ import {
     CustomCommandStatus,
     Player,
     system,
-    world,
-    EquipmentSlot,
-    Container,
-    BlockPermutation
+    world
 } from "@minecraft/server";
 
 const trashData = new Map();
@@ -15,13 +12,15 @@ system.beforeEvents.startup.subscribe(({ customCommandRegistry }) => {
     customCommandRegistry.registerCommand(
         {
             name: "tr:trash",
-            description: "ゴミ箱",
+            description: "ゴミ箱を開く",
             permissionLevel: CommandPermissionLevel.Any,
-            cheatsRequired: false,
+            cheatsRequired: false
         },
-        (origin) => {
-            const player = origin.initiator ?? origin.sourceEntity;
-            if (!(player instanceof Player)) return { status: CustomCommandStatus.Failure };
+        (event) => {
+            const player = event.origin.initiator;
+            if (!player || !(player instanceof Player)) {
+                return { status: CustomCommandStatus.Failure };
+            }
 
             system.run(() => {
                 openTrashChest(player);
@@ -33,72 +32,84 @@ system.beforeEvents.startup.subscribe(({ customCommandRegistry }) => {
 });
 
 function openTrashChest(player) {
-    const dim = player.dimension;
-    const pos = { x: Math.floor(player.location.x), y: Math.floor(player.location.y) + 3, z: Math.floor(player.location.z) };
-    
-    dim.setBlockType(pos, "minecraft:chest");
-    const chestBlock = dim.getBlock(pos);
-    const chestContainer = chestBlock.getComponent("minecraft:inventory").container;
-    
-    const playerInv = player.getComponent("minecraft:inventory").container;
-    for (let i = 0; i < playerInv.size; i++) {
-        const item = playerInv.getItem(i);
-        if (item) {
-            chestContainer.setItem(i, item.clone());
-        }
-    }
-    
-    player.openContainer(chestContainer);
-    
-    trashData.set(player.id, {
-        pos,
-        dim,
-        originalInv: new Map(),
-        checkInterval: null
-    });
-    
-    for (let i = 0; i < playerInv.size; i++) {
-        const item = playerInv.getItem(i);
-        if (item) {
-            trashData.get(player.id).originalInv.set(i, item.clone());
-        }
-    }
-    
-    const checkInterval = system.runInterval(() => {
-        if (dim.getBlock(pos).typeId !== "minecraft:chest") {
-            checkDeletedItems(player, pos, dim);
-            system.clearRun(checkInterval);
-            trashData.delete(player.id);
-        }
-    }, 2);
-}
-
-function checkDeletedItems(player, pos, dim) {
-    const playerInv = player.getComponent("minecraft:inventory").container;
-    const data = trashData.get(player.id);
-    
-    if (!data) return;
-    
-    const originalInv = data.originalInv;
-    let deletedCount = 0;
-    
-    for (let i = 0; i < playerInv.size; i++) {
-        const currentItem = playerInv.getItem(i);
-        const originalItem = originalInv.get(i);
+    try {
+        const dim = player.dimension;
+        const pos = {
+            x: Math.floor(player.location.x),
+            y: Math.floor(player.location.y) + 3,
+            z: Math.floor(player.location.z)
+        };
         
-        if (originalItem && !currentItem) {
-            deletedCount++;
-            player.sendMessage(`§a[ ゴミ箱 ] §7${originalItem.typeId.replace("minecraft:", "")} を削除`);
+        dim.setBlockType(pos, "minecraft:chest");
+        const chestBlock = dim.getBlock(pos);
+        const chestContainer = chestBlock.getComponent("minecraft:inventory").container;
+        
+        const playerInv = player.getComponent("minecraft:inventory").container;
+        
+        for (let i = 0; i < playerInv.size; i++) {
+            const item = playerInv.getItem(i);
+            if (item) {
+                chestContainer.setItem(i, item.clone());
+            }
         }
+        
+        player.openContainer(chestContainer);
+        
+        const originalState = new Map();
+        for (let i = 0; i < playerInv.size; i++) {
+            const item = playerInv.getItem(i);
+            if (item) {
+                originalState.set(i, { typeId: item.typeId, amount: item.amount });
+            }
+        }
+        
+        trashData.set(player.id, {
+            pos,
+            dim,
+            originalState
+        });
+        
+        player.sendMessage("§a[ ゴミ箱 ] チェストが開きました");
+        
+        const checkInterval = system.runInterval(() => {
+            if (dim.getBlock(pos).typeId !== "minecraft:chest") {
+                checkDeletedItems(player);
+                system.clearRun(checkInterval);
+            }
+        }, 1);
+        
+    } catch (err) {
+        player.sendMessage("§cエラー: " + err);
     }
-    
-    if (deletedCount > 0) {
-        player.playSound("random.explode");
-    }
-    
-    dim.setBlockType(pos, "minecraft:air");
 }
 
-system.afterEvents.playerLeave.subscribe((event) => {
-    trashData.delete(event.player.id);
-});
+function checkDeletedItems(player) {
+    try {
+        const data = trashData.get(player.id);
+        if (!data) return;
+        
+        const playerInv = player.getComponent("minecraft:inventory").container;
+        const originalState = data.originalState;
+        let deletedItems = [];
+        
+        for (let [slot, originalItem] of originalState) {
+            const currentItem = playerInv.getItem(slot);
+            if (!currentItem) {
+                deletedItems.push(originalItem.typeId.replace("minecraft:", ""));
+            }
+        }
+        
+        if (deletedItems.length > 0) {
+            player.playSound("random.explode");
+            for (let itemName of deletedItems) {
+                player.sendMessage("§a[ ゴミ箱 ] §7" + itemName + " を削除しました");
+            }
+        }
+        
+        data.dim.setBlockType(data.pos, "minecraft:air");
+        trashData.delete(player.id);
+        
+    } catch (err) {
+        player.sendMessage("§cエラー: " + err);
+    }
+}
