@@ -4,29 +4,27 @@ import {
     Player,
     system,
     world,
-    EquipmentSlot
+    EquipmentSlot,
+    Container,
+    BlockPermutation
 } from "@minecraft/server";
-import { ActionFormData, ModalFormData } from "@minecraft/server-ui";
+
+const trashData = new Map();
 
 system.beforeEvents.startup.subscribe(({ customCommandRegistry }) => {
     customCommandRegistry.registerCommand(
         {
             name: "tr:trash",
-            description: "ゴミ箱メニューを開きます",
+            description: "ゴミ箱",
             permissionLevel: CommandPermissionLevel.Any,
             cheatsRequired: false,
         },
         (origin) => {
             const player = origin.initiator ?? origin.sourceEntity;
-            if (!(player instanceof Player)) {
-                return {
-                    status: CustomCommandStatus.Failure,
-                    message: "このコマンドはプレイヤーのみ使用できます。",
-                };
-            }
+            if (!(player instanceof Player)) return { status: CustomCommandStatus.Failure };
 
             system.run(() => {
-                openTrashMenu(player);
+                openTrashChest(player);
             });
 
             return { status: CustomCommandStatus.Success };
@@ -34,79 +32,73 @@ system.beforeEvents.startup.subscribe(({ customCommandRegistry }) => {
     );
 });
 
-function openTrashMenu(player) {
-    const form = new ActionFormData();
-    form.title("§4[ GOMIBYAKO MENU ]");
-    form.body("§7捨てる方法を選んでください。\n§c一度捨てたアイテムは戻りません！");
+function openTrashChest(player) {
+    const dim = player.dimension;
+    const pos = { x: Math.floor(player.location.x), y: Math.floor(player.location.y) + 3, z: Math.floor(player.location.z) };
     
-    form.button("-> 手に持っているアイテムを捨てる");
-    form.button("-> インベントリから選んで捨てる");
-
-    form.show(player).then((response) => {
-        if (response.canceled) return;
-
-        if (response.selection === 0) {
-            trashMainHand(player);
-        } else if (response.selection === 1) {
-            openInventoryTrashMenu(player);
-        }
-    }).catch((err) => {
-        console.error(err);
-    });
-}
-
-function trashMainHand(player) {
-    const equippable = player.getComponent("minecraft:equippable");
-    if (!equippable) return;
-
-    const mainHandItem = equippable.getEquipment(EquipmentSlot.Mainhand);
-
-    if (!mainHandItem) {
-        player.sendMessage("§c[エラー] 手には何も持っていません。");
-        return;
-    }
-
-    equippable.setEquipment(EquipmentSlot.Mainhand, undefined);
-    player.sendMessage("§a[ゴミ箱] 選択していたアイテムを廃棄しました。");
-    player.playSound("random.toast");
-}
-
-function openInventoryTrashMenu(player) {
-    const inventory = player.getComponent("minecraft:inventory").container;
-    const form = new ModalFormData();
-    form.title("§4[ INVENTORY TRASH ]");
-
-    const itemNames = [];
-    for (let i = 0; i < inventory.size; i++) {
-        const item = inventory.getItem(i);
+    dim.setBlockType(pos, "minecraft:chest");
+    const chestBlock = dim.getBlock(pos);
+    const chestContainer = chestBlock.getComponent("minecraft:inventory").container;
+    
+    const playerInv = player.getComponent("minecraft:inventory").container;
+    for (let i = 0; i < playerInv.size; i++) {
+        const item = playerInv.getItem(i);
         if (item) {
-            itemNames.push(`Slot ${i}: ${item.typeId.replace("minecraft:", "")} (x${item.amount})`);
-        } else {
-            itemNames.push(`Slot ${i}: [--- EMPTY ---]`);
+            chestContainer.setItem(i, item.clone());
         }
     }
-
-    form.dropdown("破棄したいアイテムのスロットを選択してください:", itemNames, { defaultValue: 0 });
-    form.toggle("§c本当に削除しますか？", false);
-
-    form.show(player).then((response) => {
-        if (response.canceled) return;
-
-        const [selectedSlot, confirm] = response.formValues;
-
-        if (!confirm) {
-            player.sendMessage("§c[ゴミ箱] 削除がキャンセルされました。");
-            return;
-        }
-
-        const itemToTrash = inventory.getItem(selectedSlot);
-        if (!itemToTrash) {
-            player.sendMessage("§c[エラー] 選択されたスロットは空です。");
-            return;
-        }
-
-        inventory.setItem(selectedSlot, undefined);
-        player.sendMessage(`§a[ゴミ箱] スロット ${selectedSlot} のアイテムを破棄しました。`);
-        player.playSound("random.explode");
+    
+    player.openContainer(chestContainer);
+    
+    trashData.set(player.id, {
+        pos,
+        dim,
+        originalInv: new Map(),
+        checkInterval: null
     });
+    
+    for (let i = 0; i < playerInv.size; i++) {
+        const item = playerInv.getItem(i);
+        if (item) {
+            trashData.get(player.id).originalInv.set(i, item.clone());
+        }
+    }
+    
+    const checkInterval = system.runInterval(() => {
+        if (dim.getBlock(pos).typeId !== "minecraft:chest") {
+            checkDeletedItems(player, pos, dim);
+            system.clearRun(checkInterval);
+            trashData.delete(player.id);
+        }
+    }, 2);
 }
+
+function checkDeletedItems(player, pos, dim) {
+    const playerInv = player.getComponent("minecraft:inventory").container;
+    const data = trashData.get(player.id);
+    
+    if (!data) return;
+    
+    const originalInv = data.originalInv;
+    let deletedCount = 0;
+    
+    for (let i = 0; i < playerInv.size; i++) {
+        const currentItem = playerInv.getItem(i);
+        const originalItem = originalInv.get(i);
+        
+        if (originalItem && !currentItem) {
+            deletedCount++;
+            player.sendMessage(`§a[ ゴミ箱 ] §7${originalItem.typeId.replace("minecraft:", "")} を削除`);
+        }
+    }
+    
+    if (deletedCount > 0) {
+        player.playSound("random.explode");
+    }
+    
+    dim.setBlockType(pos, "minecraft:air");
+}
+
+system.afterEvents.playerLeave.subscribe((event) => {
+    trashData.delete(event.player.id);
+});
