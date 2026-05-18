@@ -1,17 +1,37 @@
-import { world, system, EquipmentSlot } from "@minecraft/server";
+import {
+    CommandPermissionLevel,
+    CustomCommandStatus,
+    Player,
+    system,
+    world,
+    EquipmentSlot
+} from "@minecraft/server";
 import { ActionFormData, ModalFormData } from "@minecraft/server-ui";
 
-world.beforeEvents.chatSend.subscribe((eventData) => {
-    const msg = eventData.message;
-    const sender = eventData.sender;
+system.beforeEvents.startup.subscribe(({ customCommandRegistry }) => {
+    customCommandRegistry.registerCommand(
+        {
+            name: "tr:trash",
+            description: "ゴミ箱メニューを開きます",
+            permissionLevel: CommandPermissionLevel.Any,
+            cheatsRequired: false,
+        },
+        (origin) => {
+            const player = origin.initiator ?? origin.sourceEntity;
+            if (!(player instanceof Player)) {
+                return {
+                    status: CustomCommandStatus.Failure,
+                    message: "このコマンドはプレイヤーのみ使用できます。",
+                };
+            }
 
-    if (msg === "/tr:trash") {
-        eventData.cancel = true;
+            system.run(() => {
+                openTrashMenu(player);
+            });
 
-        system.run(() => {
-            openTrashMenu(sender);
-        });
-    }
+            return { status: CustomCommandStatus.Success };
+        }
+    );
 });
 
 function openTrashMenu(player) {
