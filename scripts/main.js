@@ -2,14 +2,14 @@ import { world, system, EquipmentSlot } from "@minecraft/server";
 import { ActionFormData, ModalFormData } from "@minecraft/server-ui";
 
 world.beforeEvents.chatSend.subscribe((eventData) => {
-    const message = eventData.message;
-    const player = eventData.sender;
+    const msg = eventData.message;
+    const sender = eventData.sender;
 
-    if (message === "/tr:trash") {
+    if (msg === "/tr:trash") {
         eventData.cancel = true;
 
         system.run(() => {
-            openTrashMenu(player);
+            openTrashMenu(sender);
         });
     }
 });
